@@ -118,8 +118,6 @@ void ex2_1()
     }
     printf("Child\n");
 
-//    pointer[0] = 'A';
-//    pointer[1] = 'B';
     strncpy(pointer, "abcd", 4);
     printf("Child\n");
 
@@ -138,14 +136,14 @@ void ex2_1()
         perror("semget failed!!!\n\n");
     }
 
-    union semun arg;
-    arg.value = 0;
+//    union semun arg;
+//    arg.value = 0;
 
-    error = semctl(semId, 0, SETVAL, arg);
-    if(error == -1)
-    {
-        perror("semctl failed!!!\n\n");
-    }
+//    error = semctl(semId, 0, SETVAL, arg);
+//    if(error == -1)
+//    {
+//        perror("semctl failed!!!\n\n");
+//    }
 
     signalSem(semId);
     ///
