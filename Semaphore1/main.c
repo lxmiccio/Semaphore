@@ -1,3 +1,4 @@
+#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,6 +7,7 @@
 #include <sys/msg.h>
 #include <sys/sem.h>
 #include <sys/shm.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -24,7 +26,11 @@ void ex2();
 void ex2_2();
 void ex3();
 void ex3_1();
+void ex6();
 void ex10();
+void ex12(int argc, char *argv[]);
+void ex13(int argc, char *argv[]);
+void ex14(int argc, char *argv[]);
 
 int main(int argc, char *argv[])
 {
@@ -35,8 +41,12 @@ int main(int argc, char *argv[])
     //ex2();
     //ex2_2();
     //ex3();
-    ex3_1();
+    //ex3_1();
+    //ex6();
     //ex10();
+    //ex12(argc, argv);
+    //ex13(argc, argv);
+    ex14(argc, argv);
 
     return 0;
 }
@@ -45,6 +55,16 @@ int waitSem(int semid)
 {
     struct sembuf wait_buf;
     wait_buf.sem_num = 0;
+    wait_buf.sem_op = -1;
+
+    return semop(semid, &wait_buf, 1);
+}
+
+int waitSems(int semid, int semNumber)
+{
+    //printf("SemNumber is %d\n", semNumber);
+    struct sembuf wait_buf;
+    wait_buf.sem_num = semNumber;
     wait_buf.sem_op = -1;
 
     return semop(semid, &wait_buf, 1);
@@ -59,9 +79,18 @@ int signalSem(int semid)
     return semop(semid, &signal_buf, 1);
 }
 
+int signalSems(int semid, int semNumber)
+{
+    struct sembuf signal_buf;
+    signal_buf.sem_num = semNumber;
+    signal_buf.sem_op = 1;
+
+    return semop(semid, &signal_buf, 1);
+}
+
 void ex1()
 {
-    key_t key = ftok("/home/user/SistemiOperativiSemaphore/filename.txt", rand());
+    key_t key = ftok("/home/user/SistemiOperativiSemaphore/semaphore", rand());
     int semaphoreId = semget(key, 1, IPC_CREAT | IPC_EXCL | 0666);
     if(semaphoreId == -1)
     {
@@ -128,7 +157,7 @@ void ex1()
 void ex1_2()
 {
     int id = rand();
-    key_t key = ftok("/home/user/SistemiOperativiSemaphore/filename.txt", id);
+    key_t key = ftok("/home/user/SistemiOperativiSemaphore/semaphore", id);
     int semaphoreId = semget(key, 1, IPC_CREAT | IPC_EXCL | 0666);
     if(semaphoreId == -1)
     {
@@ -525,6 +554,61 @@ void ex3_1()
     }
 }
 
+void ex6()
+{
+    int n = 8;
+
+    key_t key = ftok("/home/user/SistemiOperativiSemaphore/semaphore", 240);
+    if(key == -1)
+    {
+        perror("ftok failed!!!");
+        exit(EXIT_FAILURE);
+    }
+
+    //Max sem number is 32000
+    int semId = semget(key, n, IPC_CREAT | 0666);
+    if(semId == -1)
+    {
+        fprintf(stderr, "semget failed, errno is %d!!!", errno);
+        exit(EXIT_FAILURE);
+    }
+
+    pid_t pids[n];
+
+    for(int i = 0; i < n; ++i)
+    {
+        union semun arg;
+        //arg.value = !i;
+
+        if(i == 0)
+        {
+            arg.value = 1;
+        }
+        else
+        {
+            arg.value = 0;
+        }
+
+        semctl(semId, i, SETVAL, arg);
+
+        pids[i] = fork();
+        if(pids[i] < 0)
+        {
+            perror("fork failed!!!");
+            exit(EXIT_FAILURE);
+        }
+        else if(pids[i] == 0)
+        {
+            waitSems(semId, i);
+            printf("I am the %d-th process\n", i);
+            signalSems(semId, i + 1);
+            exit(EXIT_SUCCESS);
+        }
+    }
+
+    while(wait(NULL) > 0);
+}
+
 typedef struct Msg
 {
         long mtype;
@@ -631,5 +715,132 @@ void ex10()
 
             printf("Tail destroyed!!!\n");
         }
+    }
+}
+
+//ex12 semaphore
+void ex12(int argc, char *argv[])
+{
+    DIR* dir = opendir(".");
+    if(dir == NULL)
+    {
+        fprintf(stderr, "opendir() returned NULL, errno is %d!!!\n\n", errno);
+        exit(EXIT_FAILURE);
+    }
+    else
+    {
+        struct dirent* entry = NULL;
+        while((entry = readdir(dir)) != NULL)
+        {
+            for(int i = 1; i < argc; ++i)
+            {
+                if(!strcmp(entry->d_name, argv[i]))
+                {
+                    if(entry->d_type == DT_DIR)
+                    {
+                        printf("%s is a folder\n", argv[i]);
+                    }
+                    else if(entry->d_type == DT_REG)
+                    {
+                        printf("%s is a regular file\n", argv[i]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+//ex12 semaphore
+void ex13(int argc, char *argv[])
+{
+    DIR* directory = opendir(".");
+    if(directory == NULL)
+    {
+        fprintf(stderr, "opendir() returned NULL, errno is %d!!!\n\n", errno);
+        exit(EXIT_FAILURE);
+    }
+    else
+    {
+        struct dirent* entry = NULL;
+        while((entry = readdir(directory)) != NULL)
+        {
+            for(int i = 1; i < argc; ++i)
+            {
+                if(!strcmp(entry->d_name, argv[i]))
+                {
+                    if(entry->d_type == DT_DIR)
+                    {
+                        printf("%s is a folder\n", argv[i]);
+                    }
+                    else if(entry->d_type == DT_REG)
+                    {
+                        struct stat buffer;
+                        int error = stat(entry->d_name, &buffer);
+                        if(error == -1)
+                        {
+                            fprintf(stderr, "Cannot stat file %s!!!\n\n", entry->d_name);
+                        }
+                        else
+                        {
+                            printf("%s is a file, size is %ld bytes\n", argv[i], buffer.st_size);
+                        }
+                    }
+                }
+            }
+        }
+
+        int error = closedir(directory);
+        if(error == -1)
+        {
+            fprintf(stderr, "Cannot close directory %s!!!\n\n", argv[1]);
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+void searchRecursive(char* dir, char* file)
+{
+    DIR* directory = opendir(dir);
+    if(directory == NULL)
+    {
+        fprintf(stderr, "opendir() returned NULL, errno is %d!!!\n\n", errno);
+        exit(EXIT_FAILURE);
+    }
+    else
+    {
+        struct dirent* entry = NULL;
+        while((entry = readdir(directory)) != NULL)
+        {
+            if(!strcmp(entry->d_name, file))
+            {
+                printf("%s/%s is the file\n", dir, entry->d_name);
+            }
+
+            if(entry->d_type == DT_DIR && strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
+            {
+                char buffer[256];
+                strncpy(buffer, "\0", 256);
+                strcat(buffer, dir);
+                strcat(buffer, "/");
+                strcat(buffer, entry->d_name);
+
+                searchRecursive(buffer, file);
+            }
+        }
+
+        int error = closedir(directory);
+        if(error == -1)
+        {
+            fprintf(stderr, "Cannot close directory %s!!!\n\n", dir);
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+void ex14(int argc, char *argv[])
+{
+    if(argc >= 3)
+    {
+        searchRecursive(argv[1], argv[2]);
     }
 }
